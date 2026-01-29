@@ -2,197 +2,246 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <!-- Важно: запрещаем масштабирование пальцами, чтобы интерфейс не ломался -->
+    <!-- Важно: viewport-fit=cover для айфонов с челкой -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Социальный Маршрут</title>
+    <title>Moscow Metro Premium</title>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- ЗАМЕНИТЕ ВАШ_API_КЛЮЧ -->
+    <!-- ЗАМЕНИТЕ ВАШ КЛЮЧ -->
     <script src="https://api-maps.yandex.ru/2.1/?apikey=8e8319a0-f355-4f5b-bef4-20745b37f5a1&lang=ru_RU&modules=services.Panel,suggest,multiRouter.MultiRoute,geolocation" type="text/javascript"></script>
     
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    
     <style>
-        /* Сброс стилей */
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-        body, html { 
-            padding: 0; margin: 0; width: 100%; height: 100%; 
-            font-family: 'Roboto', sans-serif; 
-            overflow: hidden; /* Запрет прокрутки страницы */
-            position: fixed; /* Фиксация всего экрана */
-        }
-        
-        #map { 
-            width: 100%; height: 100%; 
-            position: absolute; top: 0; left: 0; z-index: 1; 
+        /* --- iOS RESET & FONTS --- */
+        :root {
+            --ios-bg: #F2F2F7;
+            --ios-surface: rgba(255, 255, 255, 0.85); /* Полупрозрачный белый */
+            --ios-blue: #007AFF;
+            --ios-text: #000000;
+            --ios-gray: #8E8E93;
+            --ios-separator: #C6C6C8;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
         }
 
-        /* --- ВЕРХНЯЯ ПАНЕЛЬ (ПОИСК) --- */
-        .search-container {
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            /* Системный шрифт Apple */
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+            background-color: #fff;
+            overflow: hidden;
+        }
+
+        /* Карта на весь экран */
+        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
+
+        /* --- ПЛАВАЮЩАЯ ПАНЕЛЬ ПОИСКА (ISLAND) --- */
+        .search-island {
             position: absolute;
-            top: 0; left: 0; right: 0;
-            z-index: 2000;
-            padding: 12px;
-            /* Учет "челки" телефона и статус бара */
-            padding-top: calc(12px + env(safe-area-inset-top)); 
-            background: linear-gradient(to bottom, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 100%);
-            pointer-events: none; /* Чтобы клики мимо карточки проходили на карту */
+            top: 16px; left: 16px; right: 16px;
+            /* Учет челки iPhone */
+            top: calc(16px + env(safe-area-inset-top));
+            
+            background: var(--ios-surface);
+            backdrop-filter: saturate(180%) blur(20px); /* Эффект стекла Apple */
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            
+            border-radius: 20px;
+            padding: 0;
+            box-shadow: var(--shadow);
+            z-index: 100;
+            display: flex; flex-direction: column;
         }
 
-        .search-card {
-            background: #ffffff;
-            border-radius: 16px;
-            padding: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-            pointer-events: auto; /* Включаем клики на самой карточке */
-            display: flex; 
-            flex-direction: column; 
-            gap: 12px; /* Расстояние между элементами внутри */
-        }
-
-        /* Группа поля ввода */
-        .input-wrapper {
+        .input-group {
             position: relative;
-            width: 100%;
+            display: flex; align-items: center;
+            padding: 12px 16px;
+        }
+        
+        /* Разделитель между инпутами как в iOS */
+        .input-group:first-child {
+            border-bottom: 0.5px solid rgba(60, 60, 67, 0.18);
         }
 
-        .input-icon {
+        .dot {
+            width: 10px; height: 10px; border-radius: 50%; margin-right: 12px; flex-shrink: 0;
+        }
+        .dot-green { background: #34C759; }
+        .dot-red { background: #FF3B30; }
+
+        .ios-input {
+            flex: 1;
+            border: none; background: transparent;
+            font-size: 17px; color: var(--ios-text);
+            outline: none; padding: 4px 0;
+            font-weight: 400;
+        }
+        .ios-input::placeholder { color: var(--ios-gray); }
+
+        /* Кнопка локации */
+        .btn-locate {
+            background: none; border: none; padding: 8px;
+            color: var(--ios-blue); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn-locate svg { width: 22px; height: 22px; fill: currentColor; }
+
+        /* Кнопка поиска */
+        .search-btn-float {
             position: absolute;
-            left: 14px; top: 50%;
-            transform: translateY(-50%);
-            font-size: 14px;
-        }
-
-        .custom-input {
-            width: 100%;
-            padding: 14px 14px 14px 40px; /* Отступ слева под иконку */
-            border: 1px solid #E5E7EB;
-            background: #F3F4F6;
-            border-radius: 12px;
-            font-size: 16px;
-            outline: none;
-            appearance: none; /* Убираем стандартные стили iOS */
-        }
-        
-        .custom-input:focus {
-            background: #fff;
-            border-color: #E31E24;
-            box-shadow: 0 0 0 3px rgba(227, 30, 36, 0.1);
-        }
-
-        /* Кнопка "Где я" внутри инпута */
-        .locate-btn {
-            position: absolute; right: 10px; top: 50%;
-            transform: translateY(-50%);
-            background: #EBF5FF; color: #007AFF;
-            border: none; border-radius: 8px;
-            padding: 6px 10px; font-weight: 600; font-size: 12px;
+            top: calc(140px + env(safe-area-inset-top)); /* Чуть ниже панели */
+            right: 16px;
+            background: var(--ios-blue);
+            color: white;
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            border: none;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 90;
             cursor: pointer;
+            transition: transform 0.2s;
         }
+        .search-btn-float:active { transform: scale(0.9); }
 
-        .btn-main {
-            background: #E31E24; color: white;
-            border: none; padding: 14px;
-            border-radius: 12px; font-weight: 600; font-size: 16px;
-            cursor: pointer; text-align: center;
-            width: 100%;
-            box-shadow: 0 4px 10px rgba(227, 30, 36, 0.3);
-        }
-        .btn-main:active { opacity: 0.9; transform: scale(0.98); }
-
-        /* --- НИЖНЯЯ ПАНЕЛЬ (РЕЗУЛЬТАТЫ) --- */
-        .result-sheet {
+        /* --- НИЖНЯЯ ПАНЕЛЬ (MODAL SHEET) --- */
+        .bottom-sheet {
             position: absolute; bottom: 0; left: 0; right: 0;
-            background: white;
+            background: var(--ios-surface);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            
             border-radius: 24px 24px 0 0;
-            padding: 24px;
-            padding-bottom: calc(24px + env(safe-area-inset-bottom)); /* Учет полоски home bar */
-            box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
-            z-index: 2100;
-            transform: translateY(110%);
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            padding: 24px 20px;
+            padding-bottom: calc(24px + env(safe-area-inset-bottom));
+            
+            box-shadow: 0 -5px 30px rgba(0,0,0,0.1);
+            transform: translateY(120%);
+            transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1); /* Apple easing */
+            z-index: 200;
+            display: flex; flex-direction: column; gap: 16px;
         }
-        
-        .result-sheet.active { transform: translateY(0); }
+        .bottom-sheet.active { transform: translateY(0); }
 
-        .result-row {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 20px;
+        /* "Ручка" для шторки */
+        .sheet-handle {
+            width: 40px; height: 5px; background: #C5C5C7;
+            border-radius: 3px; margin: -10px auto 10px auto;
         }
-        
-        .time-big { font-size: 32px; font-weight: 800; color: #111827; letter-spacing: -1px; }
-        .dist-small { font-size: 16px; color: #6B7280; font-weight: 500; }
 
-        .btn-confirm {
-            background: #111827; color: white;
-            width: 100%; padding: 16px;
-            border: none; border-radius: 14px;
-            font-size: 16px; font-weight: 600;
+        .route-meta {
+            display: flex; align-items: baseline; justify-content: space-between;
+        }
+        .time-big { font-size: 34px; font-weight: 700; color: #000; letter-spacing: -0.5px; }
+        .dist-badge { 
+            font-size: 15px; font-weight: 600; color: #8E8E93; 
+            background: rgba(142, 142, 147, 0.12); padding: 4px 10px; border-radius: 8px; 
+        }
+
+        .btn-primary {
+            background: #000000; color: white;
+            width: 100%; padding: 16px; border-radius: 14px;
+            font-size: 17px; font-weight: 600; border: none;
             cursor: pointer;
         }
         
-        /* Исправление для выпадающего списка Яндекса, чтобы он был поверх всего */
-        .ymaps-2-1-79-search__suggest { z-index: 9999 !important; }
+        /* Исправление подсказок Яндекса под стиль */
+        .ymaps-2-1-79-search__suggest {
+            border: none !important;
+            border-radius: 12px !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+            margin-top: 8px !important;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
 
-    <div class="search-container">
-        <div class="search-card">
-            <!-- Откуда -->
-            <div class="input-wrapper">
-                <span class="input-icon">🟢</span>
-                <input type="text" id="suggest-from" class="custom-input" placeholder="Откуда?">
-                <button class="locate-btn" onclick="findMe()">Где я</button>
-            </div>
-            
-            <!-- Куда -->
-            <div class="input-wrapper">
-                <span class="input-icon">🔴</span>
-                <input type="text" id="suggest-to" class="custom-input" placeholder="Куда?">
-            </div>
-
-            <!-- Кнопка поиска -->
-            <button class="btn-main" onclick="buildRoute()">Найти маршрут</button>
+    <!-- Верхний "Остров" -->
+    <div class="search-island">
+        <div class="input-group">
+            <div class="dot dot-green"></div>
+            <input type="text" id="suggest-from" class="ios-input" placeholder="Откуда?">
+            <button class="btn-locate" onclick="findMe()">
+                <!-- SVG Icon Location -->
+                <svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+            </button>
+        </div>
+        <div class="input-group">
+            <div class="dot dot-red"></div>
+            <input type="text" id="suggest-to" class="ios-input" placeholder="Куда?">
         </div>
     </div>
 
-    <!-- Результат -->
-    <div class="result-sheet" id="result-panel">
-        <div class="result-row">
+    <!-- Плавающая кнопка поиска (Стрелка) -->
+    <button class="search-btn-float" onclick="buildRoute()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+    </button>
+
+    <!-- Нижняя панель -->
+    <div class="bottom-sheet" id="result-panel">
+        <div class="sheet-handle"></div>
+        <div class="route-meta">
             <div class="time-big" id="res-time">-- мин</div>
-            <div class="dist-small" id="res-dist">-- км</div>
+            <div class="dist-badge" id="res-dist">-- км</div>
         </div>
-        <button class="btn-confirm" onclick="sendToBot()">Поехали! 🚇</button>
+        <button class="btn-primary" onclick="sendToBot()">Поехали</button>
     </div>
 
-    <script type="text/javascript">
+    <script>
         let tg = window.Telegram.WebApp;
         tg.expand();
-        
-        let myMap;
-        let activeMultiRoute = null;
-        let routeData = {};
+
+        let myMap, activeMultiRoute, routeData = {};
 
         ymaps.ready(init);
 
         function init() {
-            // Центр Москвы
+            // Инициализация карты
             myMap = new ymaps.Map('map', {
                 center: [55.753215, 37.622504],
                 zoom: 11,
-                controls: [] 
-            }, {
-                zoomControlSize: 'small',
-                zoomControlPosition: { right: 10, top: 200 } // Сдвигаем зум, если он нужен
+                controls: [] // Полностью чистая карта
             });
 
-            // Настраиваем подсказки
-            var suggestView1 = new ymaps.SuggestView('suggest-from', { results: 3, offset: [0, 5] });
-            var suggestView2 = new ymaps.SuggestView('suggest-to', { results: 3, offset: [0, 5] });
+            // Подсказки
+            new ymaps.SuggestView('suggest-from', { results: 3, offset: [0, 5] });
+            new ymaps.SuggestView('suggest-to', { results: 3, offset: [0, 5] });
+        }
+
+        // --- ЛОГИКА ГЕОЛОКАЦИИ (Fix для iPhone) ---
+        function findMe() {
+            // Вибрация при нажатии
+            tg.HapticFeedback.impactOccurred('medium');
+
+            // Используем браузерный провайдер через Яндекс
+            ymaps.geolocation.get({
+                provider: 'browser',
+                mapStateAutoApply: true
+            }).then(function (result) {
+                // Успех
+                var userAddress = result.geoObjects.get(0).properties.get('text');
+                // Если Яндекс вернул слишком длинный адрес, берем координаты
+                if (!userAddress) userAddress = "Мое местоположение";
+                
+                document.getElementById('suggest-from').value = userAddress;
+                
+                // Ставим метку "Я"
+                result.geoObjects.options.set('preset', 'islands#blueCircleIcon');
+                myMap.geoObjects.add(result.geoObjects);
+                
+                // Зумимся
+                myMap.setCenter(result.geoObjects.get(0).geometry.getCoordinates(), 15);
+
+            }, function (e) {
+                // ОШИБКА
+                // На айфонах часто падает сюда, если нет прав
+                tg.HapticFeedback.notificationOccurred('error');
+                alert("Ошибка геолокации!\n\nПроверьте: Настройки iPhone -> Конфиденциальность -> Службы геолокации -> Telegram -> Выберите 'При использовании'.");
+            });
         }
 
         function buildRoute() {
@@ -200,25 +249,21 @@
             const to = document.getElementById('suggest-to').value;
 
             if(!from || !to) {
-                tg.HapticFeedback.notificationOccurred('error');
+                tg.HapticFeedback.notificationOccurred('warning');
                 return; 
             }
 
-            if (activeMultiRoute) {
-                myMap.geoObjects.remove(activeMultiRoute);
-            }
+            if (activeMultiRoute) myMap.geoObjects.remove(activeMultiRoute);
 
-            // Лоадер на кнопке (визуальный эффект)
-            let btn = document.querySelector('.btn-main');
-            let oldText = btn.innerText;
-            btn.innerText = "Ищем...";
-
+            // Кнопка крутится (можно добавить анимацию)
+            
             activeMultiRoute = new ymaps.multiRouter.MultiRoute({
                 referencePoints: [from, to],
                 params: { routingMode: 'masstransit' }
             }, {
-                routeStrokeColor: "#E31E24", 
-                routeActiveStrokeColor: "#E31E24",
+                // Стиль линии маршрута (Apple Blue)
+                routeStrokeColor: "#007AFF", 
+                routeActiveStrokeColor: "#007AFF",
                 routeStrokeWidth: 5,
                 boundsAutoApply: true 
             });
@@ -226,7 +271,6 @@
             myMap.geoObjects.add(activeMultiRoute);
 
             activeMultiRoute.model.events.add('requestsuccess', function() {
-                btn.innerText = oldText;
                 const activeRoute = activeMultiRoute.getActiveRoute();
                 if (activeRoute) {
                     const time = activeRoute.properties.get("duration").text;
@@ -236,22 +280,9 @@
                     document.getElementById('res-dist').innerText = dist;
                     document.getElementById('result-panel').classList.add('active');
                     
-                    routeData = { time: time, distance: dist };
+                    routeData = { time, dist };
                     tg.HapticFeedback.notificationOccurred('success');
                 }
-            });
-            
-            activeMultiRoute.model.events.add('requestfail', function() {
-                btn.innerText = oldText;
-                alert("Не удалось построить маршрут");
-            });
-        }
-
-        function findMe() {
-            ymaps.geolocation.get({ provider: 'browser' }).then(function (res) {
-                const userAddress = res.geoObjects.get(0).properties.get('text');
-                document.getElementById('suggest-from').value = userAddress;
-                tg.HapticFeedback.impactOccurred('light');
             });
         }
 
