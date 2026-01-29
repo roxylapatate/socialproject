@@ -3,216 +3,231 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>МосМетро Помощник</title>
+    <title>Moscow Social Mobility</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Подключаем API с модулями поиска и маршрутизации -->
     <script src="https://api-maps.yandex.ru/2.1/?apikey=8e8319a0-f355-4f5b-bef4-20745b37f5a1&lang=ru_RU" type="text/javascript"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Подключаем шрифт Roboto для современного вида -->
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-
     <style>
         :root {
-            --moscow-red: #E31E24; /* Цвет Московского транспорта */
-            --bg-color: #ffffff;
-            --text-color: #000000;
+            --primary: #E31E24;
+            --success: #27AE60; /* Зеленый для экологии */
+            --surface: #ffffff;
+            --text: #1F2937;
+            --secondary-text: #6B7280;
+            --shadow: 0 4px 20px rgba(0,0,0,0.1);
+            --radius: 16px;
         }
 
-        /* Темная тема (адаптация под настройки Телеграм) */
         body.dark-mode {
-            --bg-color: #1c1c1e;
-            --text-color: #ffffff;
+            --surface: #1F1F1F;
+            --text: #F3F4F6;
+            --secondary-text: #9CA3AF;
         }
 
-        body, html { 
-            padding: 0; margin: 0; width: 100%; height: 100%; 
-            font-family: 'Roboto', sans-serif;
-            overflow: hidden;
-        }
-
+        body, html { padding: 0; margin: 0; width: 100%; height: 100%; font-family: 'Inter', sans-serif; overflow: hidden; }
         #map { width: 100%; height: 100%; }
 
-        /* Плавающая панель управления */
-        .controls-panel {
-            position: absolute;
-            bottom: 30px;
-            left: 10px;
-            right: 10px;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            pointer-events: none; /* Чтобы клики сквозь пустые места проходили на карту */
+        /* Верхняя панель (Язык и доступность) */
+        .top-bar {
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            display: flex; gap: 8px;
+        }
+        .icon-btn {
+            background: var(--surface); border: none; padding: 10px;
+            border-radius: 50%; box-shadow: var(--shadow);
+            cursor: pointer; font-size: 18px; color: var(--text);
         }
 
-        .btn-row {
-            display: flex;
-            gap: 10px;
-            pointer-events: auto;
-            overflow-x: auto;
-            padding-bottom: 5px;
+        /* Нижняя панель */
+        .bottom-sheet {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: var(--surface);
+            border-radius: var(--radius) var(--radius) 0 0;
+            padding: 20px; z-index: 1000;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            transform: translateY(0); transition: transform 0.3s;
         }
 
-        /* Стиль кнопок */
-        .action-btn {
-            flex: 1;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            border: none;
-            padding: 12px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            font-weight: 500;
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.1s;
-            white-space: nowrap;
+        .stats-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            margin-top: 15px; display: none; /* Скрыто до построения маршрута */
         }
 
-        .action-btn:active { transform: scale(0.96); }
-        
-        .btn-primary {
-            background-color: var(--moscow-red);
-            color: white;
-            font-weight: 700;
+        .stat-card {
+            background: rgba(0,0,0,0.05); padding: 12px; border-radius: 12px;
+            text-align: center;
+        }
+        .dark-mode .stat-card { background: rgba(255,255,255,0.1); }
+
+        .stat-value { font-weight: 700; font-size: 16px; display: block; }
+        .stat-label { font-size: 11px; color: var(--secondary-text); }
+        .eco { color: var(--success); }
+
+        .btn-main {
+            width: 100%; background: var(--primary); color: white;
+            border: none; padding: 14px; border-radius: 12px;
+            font-weight: 600; font-size: 16px; margin-top: 15px;
+            cursor: pointer; display: none;
         }
 
-        /* Лоадер */
-        #loader {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2000;
-            background: rgba(255,255,255,0.9);
-            padding: 20px;
-            border-radius: 10px;
-            display: block;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        .category-scroll {
+            display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; margin-bottom: 10px;
+        }
+        .cat-chip {
+            background: var(--surface); border: 1px solid #e5e7eb;
+            padding: 8px 14px; border-radius: 20px; font-size: 13px;
+            white-space: nowrap; cursor: pointer; color: var(--text);
         }
     </style>
 </head>
 <body>
-    <div id="loader">Загрузка карты Москвы...</div>
     <div id="map"></div>
 
-    <div class="controls-panel">
-        <!-- Быстрый поиск социальных объектов -->
-        <div class="btn-row">
-            <button class="action-btn" onclick="searchNear('МФЦ')">🏢 МФЦ</button>
-            <button class="action-btn" onclick="searchNear('Поликлиника')">🏥 Поликлиники</button>
-            <button class="action-btn" onclick="searchNear('Аптека')">💊 Аптеки</button>
-        </div>
-        
-        <!-- Основные действия -->
-        <div class="btn-row">
-            <button class="action-btn" onclick="findMe()">📍 Где я?</button>
-            <button id="send-btn" class="action-btn btn-primary" style="display:none;" onclick="sendRoute()">✅ Отправить маршрут</button>
-        </div>
+    <!-- Верхние кнопки -->
+    <div class="top-bar">
+        <button class="icon-btn" onclick="toggleLang()">🌐 <span id="lang-ind">RU</span></button>
+        <button class="icon-btn" id="access-btn" onclick="toggleAccess()">♿</button>
     </div>
 
-    <script type="text/javascript">
-        let tg = window.Telegram.WebApp;
-        tg.expand(); 
-        
-        if (tg.colorScheme === 'dark') {
-            document.body.classList.add('dark-mode');
+    <!-- Нижняя панель -->
+    <div class="bottom-sheet">
+        <!-- Категории поиска -->
+        <div class="category-scroll">
+            <button class="cat-chip" onclick="search('МФЦ')">🏢 <span data-t="mfc">МФЦ</span></button>
+            <button class="cat-chip" onclick="search('Поликлиника')">🏥 <span data-t="clinic">Поликлиники</span></button>
+            <button class="cat-chip" onclick="search('Пандус')">♿ <span data-t="ramps">Доступность</span></button>
+            <button class="cat-chip" onclick="findMe()">📍 <span data-t="me">Где я</span></button>
+        </div>
+
+        <!-- Статистика (Экология) -->
+        <div class="stats-grid" id="stats">
+            <div class="stat-card">
+                <span class="stat-value eco" id="co2-val">0 g</span>
+                <span class="stat-label" data-t="co2_saved">CO₂ Saved</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="cal-val">0</span>
+                <span class="stat-label" data-t="cal_burn">Calories</span>
+            </div>
+        </div>
+
+        <button class="btn-main" id="send-btn" onclick="sendData()">
+            <span data-t="send">Отправить маршрут</span>
+        </button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        if(tg.colorScheme === 'dark') document.body.classList.add('dark-mode');
+
+        // Тексты для перевода
+        const texts = {
+            ru: { mfc: "МФЦ", clinic: "Поликлиники", ramps: "Пандусы", me: "Где я", co2_saved: "Сэкономлено CO₂", cal_burn: "Ккал сожжено", send: "✅ Зафиксировать поездку" },
+            en: { mfc: "Public Services", clinic: "Hospitals", ramps: "Ramps", me: "Where am I", co2_saved: "CO₂ Saved", cal_burn: "Calories burned", send: "✅ Save Trip" }
+        };
+
+        let lang = 'ru';
+        let accessibilityMode = false;
+        let routeData = {};
+
+        function toggleLang() {
+            lang = lang === 'ru' ? 'en' : 'ru';
+            document.getElementById('lang-ind').innerText = lang.toUpperCase();
+            updateTexts();
         }
 
-        let myMap;
-        let routePanelControl;
-        let currentRouteLength = "";
-        let currentRouteTime = "";
+        function toggleAccess() {
+            accessibilityMode = !accessibilityMode;
+            const btn = document.getElementById('access-btn');
+            btn.style.background = accessibilityMode ? '#E31E24' : 'var(--surface)';
+            btn.style.color = accessibilityMode ? '#fff' : 'var(--text)';
+            // Здесь можно влиять на настройки маршрутизации, если API позволяет,
+            // или просто визуально уведомлять пользователя.
+            tg.HapticFeedback.notificationOccurred('warning');
+        }
 
-        ymaps.ready(init);
+        function updateTexts() {
+            document.querySelectorAll('[data-t]').forEach(el => {
+                el.innerText = texts[lang][el.getAttribute('data-t')];
+            });
+        }
 
-        function init() {
-            document.getElementById('loader').style.display = 'none';
+        // --- КАРТА ---
+        let myMap, routePanelControl;
 
+        ymaps.ready(function(){
             myMap = new ymaps.Map("map", {
-                center: [55.753215, 37.622504], // Центр Москвы
-                zoom: 11,
-                controls: ['zoomControl'] // Только зум, чтобы не захламлять
-            }, {
-                searchControlProvider: 'yandex#search'
+                center: [55.751574, 37.573856], zoom: 11, controls: []
             });
 
             routePanelControl = new ymaps.control.RoutePanel({
-                options: {
-                    showHeader: true,
-                    title: 'Маршрут',
-                    autofocus: false,
-                    maxWidth: '90%' // Адаптивность
-                }
+                options: { showHeader: true, maxWidth: '280px', visible: true }
             });
-
+            
             routePanelControl.routePanel.state.set({
-                type: 'masstransit',
-                fromEnabled: true,
-                toEnabled: true
+                type: 'masstransit', fromEnabled: true, toEnabled: true
             });
 
-            myMap.controls.add(routePanelControl, {float: 'top'});
+            myMap.controls.add(routePanelControl, {float: 'top', right: 10});
 
+            // Слушаем построение маршрута для расчета эко-следа
             routePanelControl.routePanel.getRouteAsync().then(function (route) {
                 route.model.events.add('requestsuccess', function () {
-                    var activeRoute = route.getActiveRoute();
-                    if (activeRoute) {
-                        currentRouteLength = activeRoute.properties.get("distance").text;
-                        currentRouteTime = activeRoute.properties.get("duration").text;
+                    const activeRoute = route.getActiveRoute();
+                    if(activeRoute) {
+                        const distanceMeters = activeRoute.properties.get("distance").value;
+                        const timeText = activeRoute.properties.get("duration").text;
                         
-                        document.getElementById('send-btn').style.display = 'flex';
-                        tg.HapticFeedback.notificationOccurred('success');
+                        calculateEcoImpact(distanceMeters);
+                        
+                        // Сохраняем данные
+                        routeData = {
+                            time: timeText,
+                            dist: activeRoute.properties.get("distance").text,
+                            co2: document.getElementById('co2-val').innerText,
+                            cal: document.getElementById('cal-val').innerText
+                        };
+                        
+                        document.getElementById('stats').style.display = 'grid';
+                        document.getElementById('send-btn').style.display = 'block';
                     }
                 });
             });
+        });
+
+        // Формула расчета экологии (демонстрационная)
+        function calculateEcoImpact(meters) {
+            const km = meters / 1000;
+            // 1 км на авто ~ 150г CO2. На метро считаем ~ 0 (электроэнергия АЭС/ГЭС)
+            const savedCO2 = Math.round(km * 150); 
+            // Калории: ходьба и пересадки (примерно 20% от пути пешком)
+            const calories = Math.round(km * 0.2 * 50); 
+
+            document.getElementById('co2-val').innerText = `${savedCO2} g`;
+            document.getElementById('cal-val').innerText = `${calories} kcal`;
+        }
+
+        function search(query) {
+            const searchControl = new ymaps.control.SearchControl({
+                options: { provider: 'yandex#search', results: 5 }
+            });
+            myMap.controls.add(searchControl);
+            searchControl.search(query);
         }
 
         function findMe() {
-            ymaps.geolocation.get({
-                provider: 'browser',
-                mapStateAutoApply: true
-            }).then(function (result) {
+            ymaps.geolocation.get({ provider: 'browser', mapStateAutoApply: true })
+            .then(res => {
                 routePanelControl.routePanel.state.set({
-                    from: result.geoObjects.get(0).geometry.getCoordinates(),
-                    fromDisplayName: 'Мое местоположение'
+                    from: res.geoObjects.get(0).geometry.getCoordinates()
                 });
             });
         }
 
-        function searchNear(query) {
-            let center = myMap.getCenter();
-            
-            let to = routePanelControl.routePanel.state.get('to');
-            if(to) {
-            }
-
-            var searchControl = new ymaps.control.SearchControl({
-                options: {
-                    provider: 'yandex#search',
-                    noPlacemark: false,
-                    results: 5 // Показываем топ-5
-                }
-            });
-            
-            myMap.controls.add(searchControl);
-            searchControl.search(query);
-            tg.HapticFeedback.impactOccurred('light');
-        }
-
-        function sendRoute() {
-            if (!currentRouteTime) return;
-
-            // Формируем JSON объект
-            const data = JSON.stringify({
-                time: currentRouteTime,
-                distance: currentRouteLength,
-                action: "save_route"
-            });
-            
-            tg.sendData(data);
+        function sendData() {
+            tg.sendData(JSON.stringify({...routeData, action: 'save_route'}));
         }
     </script>
 </body>
