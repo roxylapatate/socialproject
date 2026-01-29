@@ -2,232 +2,263 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Moscow Social Mobility</title>
+    <!-- Важно: запрещаем масштабирование пальцами, чтобы интерфейс не ломался -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Социальный Маршрут</title>
+    
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://api-maps.yandex.ru/2.1/?apikey=8e8319a0-f355-4f5b-bef4-20745b37f5a1&lang=ru_RU" type="text/javascript"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ЗАМЕНИТЕ ВАШ_API_КЛЮЧ -->
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=8e8319a0-f355-4f5b-bef4-20745b37f5a1&lang=ru_RU&modules=services.Panel,suggest,multiRouter.MultiRoute,geolocation" type="text/javascript"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
     <style>
-        :root {
-            --primary: #E31E24;
-            --success: #27AE60; /* Зеленый для экологии */
-            --surface: #ffffff;
-            --text: #1F2937;
-            --secondary-text: #6B7280;
-            --shadow: 0 4px 20px rgba(0,0,0,0.1);
-            --radius: 16px;
+        /* Сброс стилей */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body, html { 
+            padding: 0; margin: 0; width: 100%; height: 100%; 
+            font-family: 'Roboto', sans-serif; 
+            overflow: hidden; /* Запрет прокрутки страницы */
+            position: fixed; /* Фиксация всего экрана */
+        }
+        
+        #map { 
+            width: 100%; height: 100%; 
+            position: absolute; top: 0; left: 0; z-index: 1; 
         }
 
-        body.dark-mode {
-            --surface: #1F1F1F;
-            --text: #F3F4F6;
-            --secondary-text: #9CA3AF;
+        /* --- ВЕРХНЯЯ ПАНЕЛЬ (ПОИСК) --- */
+        .search-container {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            z-index: 2000;
+            padding: 12px;
+            /* Учет "челки" телефона и статус бара */
+            padding-top: calc(12px + env(safe-area-inset-top)); 
+            background: linear-gradient(to bottom, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 100%);
+            pointer-events: none; /* Чтобы клики мимо карточки проходили на карту */
         }
 
-        body, html { padding: 0; margin: 0; width: 100%; height: 100%; font-family: 'Inter', sans-serif; overflow: hidden; }
-        #map { width: 100%; height: 100%; }
-
-        /* Верхняя панель (Язык и доступность) */
-        .top-bar {
-            position: absolute; top: 10px; right: 10px; z-index: 1000;
-            display: flex; gap: 8px;
-        }
-        .icon-btn {
-            background: var(--surface); border: none; padding: 10px;
-            border-radius: 50%; box-shadow: var(--shadow);
-            cursor: pointer; font-size: 18px; color: var(--text);
+        .search-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            pointer-events: auto; /* Включаем клики на самой карточке */
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; /* Расстояние между элементами внутри */
         }
 
-        /* Нижняя панель */
-        .bottom-sheet {
-            position: absolute; bottom: 0; left: 0; right: 0;
-            background: var(--surface);
-            border-radius: var(--radius) var(--radius) 0 0;
-            padding: 20px; z-index: 1000;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
-            transform: translateY(0); transition: transform 0.3s;
+        /* Группа поля ввода */
+        .input-wrapper {
+            position: relative;
+            width: 100%;
         }
 
-        .stats-grid {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-            margin-top: 15px; display: none; /* Скрыто до построения маршрута */
+        .input-icon {
+            position: absolute;
+            left: 14px; top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
         }
 
-        .stat-card {
-            background: rgba(0,0,0,0.05); padding: 12px; border-radius: 12px;
-            text-align: center;
+        .custom-input {
+            width: 100%;
+            padding: 14px 14px 14px 40px; /* Отступ слева под иконку */
+            border: 1px solid #E5E7EB;
+            background: #F3F4F6;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            appearance: none; /* Убираем стандартные стили iOS */
         }
-        .dark-mode .stat-card { background: rgba(255,255,255,0.1); }
+        
+        .custom-input:focus {
+            background: #fff;
+            border-color: #E31E24;
+            box-shadow: 0 0 0 3px rgba(227, 30, 36, 0.1);
+        }
 
-        .stat-value { font-weight: 700; font-size: 16px; display: block; }
-        .stat-label { font-size: 11px; color: var(--secondary-text); }
-        .eco { color: var(--success); }
+        /* Кнопка "Где я" внутри инпута */
+        .locate-btn {
+            position: absolute; right: 10px; top: 50%;
+            transform: translateY(-50%);
+            background: #EBF5FF; color: #007AFF;
+            border: none; border-radius: 8px;
+            padding: 6px 10px; font-weight: 600; font-size: 12px;
+            cursor: pointer;
+        }
 
         .btn-main {
-            width: 100%; background: var(--primary); color: white;
-            border: none; padding: 14px; border-radius: 12px;
-            font-weight: 600; font-size: 16px; margin-top: 15px;
-            cursor: pointer; display: none;
+            background: #E31E24; color: white;
+            border: none; padding: 14px;
+            border-radius: 12px; font-weight: 600; font-size: 16px;
+            cursor: pointer; text-align: center;
+            width: 100%;
+            box-shadow: 0 4px 10px rgba(227, 30, 36, 0.3);
         }
+        .btn-main:active { opacity: 0.9; transform: scale(0.98); }
 
-        .category-scroll {
-            display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; margin-bottom: 10px;
+        /* --- НИЖНЯЯ ПАНЕЛЬ (РЕЗУЛЬТАТЫ) --- */
+        .result-sheet {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: white;
+            border-radius: 24px 24px 0 0;
+            padding: 24px;
+            padding-bottom: calc(24px + env(safe-area-inset-bottom)); /* Учет полоски home bar */
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
+            z-index: 2100;
+            transform: translateY(110%);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .cat-chip {
-            background: var(--surface); border: 1px solid #e5e7eb;
-            padding: 8px 14px; border-radius: 20px; font-size: 13px;
-            white-space: nowrap; cursor: pointer; color: var(--text);
+        
+        .result-sheet.active { transform: translateY(0); }
+
+        .result-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px;
         }
+        
+        .time-big { font-size: 32px; font-weight: 800; color: #111827; letter-spacing: -1px; }
+        .dist-small { font-size: 16px; color: #6B7280; font-weight: 500; }
+
+        .btn-confirm {
+            background: #111827; color: white;
+            width: 100%; padding: 16px;
+            border: none; border-radius: 14px;
+            font-size: 16px; font-weight: 600;
+            cursor: pointer;
+        }
+        
+        /* Исправление для выпадающего списка Яндекса, чтобы он был поверх всего */
+        .ymaps-2-1-79-search__suggest { z-index: 9999 !important; }
     </style>
 </head>
 <body>
+
     <div id="map"></div>
 
-    <!-- Верхние кнопки -->
-    <div class="top-bar">
-        <button class="icon-btn" onclick="toggleLang()">🌐 <span id="lang-ind">RU</span></button>
-        <button class="icon-btn" id="access-btn" onclick="toggleAccess()">♿</button>
+    <div class="search-container">
+        <div class="search-card">
+            <!-- Откуда -->
+            <div class="input-wrapper">
+                <span class="input-icon">🟢</span>
+                <input type="text" id="suggest-from" class="custom-input" placeholder="Откуда?">
+                <button class="locate-btn" onclick="findMe()">Где я</button>
+            </div>
+            
+            <!-- Куда -->
+            <div class="input-wrapper">
+                <span class="input-icon">🔴</span>
+                <input type="text" id="suggest-to" class="custom-input" placeholder="Куда?">
+            </div>
+
+            <!-- Кнопка поиска -->
+            <button class="btn-main" onclick="buildRoute()">Найти маршрут</button>
+        </div>
     </div>
 
-    <!-- Нижняя панель -->
-    <div class="bottom-sheet">
-        <!-- Категории поиска -->
-        <div class="category-scroll">
-            <button class="cat-chip" onclick="search('МФЦ')">🏢 <span data-t="mfc">МФЦ</span></button>
-            <button class="cat-chip" onclick="search('Поликлиника')">🏥 <span data-t="clinic">Поликлиники</span></button>
-            <button class="cat-chip" onclick="search('Пандус')">♿ <span data-t="ramps">Доступность</span></button>
-            <button class="cat-chip" onclick="findMe()">📍 <span data-t="me">Где я</span></button>
+    <!-- Результат -->
+    <div class="result-sheet" id="result-panel">
+        <div class="result-row">
+            <div class="time-big" id="res-time">-- мин</div>
+            <div class="dist-small" id="res-dist">-- км</div>
         </div>
-
-        <!-- Статистика (Экология) -->
-        <div class="stats-grid" id="stats">
-            <div class="stat-card">
-                <span class="stat-value eco" id="co2-val">0 g</span>
-                <span class="stat-label" data-t="co2_saved">CO₂ Saved</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value" id="cal-val">0</span>
-                <span class="stat-label" data-t="cal_burn">Calories</span>
-            </div>
-        </div>
-
-        <button class="btn-main" id="send-btn" onclick="sendData()">
-            <span data-t="send">Отправить маршрут</span>
-        </button>
+        <button class="btn-confirm" onclick="sendToBot()">Поехали! 🚇</button>
     </div>
 
-    <script>
-        const tg = window.Telegram.WebApp;
+    <script type="text/javascript">
+        let tg = window.Telegram.WebApp;
         tg.expand();
-        if(tg.colorScheme === 'dark') document.body.classList.add('dark-mode');
-
-        // Тексты для перевода
-        const texts = {
-            ru: { mfc: "МФЦ", clinic: "Поликлиники", ramps: "Пандусы", me: "Где я", co2_saved: "Сэкономлено CO₂", cal_burn: "Ккал сожжено", send: "✅ Зафиксировать поездку" },
-            en: { mfc: "Public Services", clinic: "Hospitals", ramps: "Ramps", me: "Where am I", co2_saved: "CO₂ Saved", cal_burn: "Calories burned", send: "✅ Save Trip" }
-        };
-
-        let lang = 'ru';
-        let accessibilityMode = false;
+        
+        let myMap;
+        let activeMultiRoute = null;
         let routeData = {};
 
-        function toggleLang() {
-            lang = lang === 'ru' ? 'en' : 'ru';
-            document.getElementById('lang-ind').innerText = lang.toUpperCase();
-            updateTexts();
-        }
+        ymaps.ready(init);
 
-        function toggleAccess() {
-            accessibilityMode = !accessibilityMode;
-            const btn = document.getElementById('access-btn');
-            btn.style.background = accessibilityMode ? '#E31E24' : 'var(--surface)';
-            btn.style.color = accessibilityMode ? '#fff' : 'var(--text)';
-            // Здесь можно влиять на настройки маршрутизации, если API позволяет,
-            // или просто визуально уведомлять пользователя.
-            tg.HapticFeedback.notificationOccurred('warning');
-        }
-
-        function updateTexts() {
-            document.querySelectorAll('[data-t]').forEach(el => {
-                el.innerText = texts[lang][el.getAttribute('data-t')];
-            });
-        }
-
-        // --- КАРТА ---
-        let myMap, routePanelControl;
-
-        ymaps.ready(function(){
-            myMap = new ymaps.Map("map", {
-                center: [55.751574, 37.573856], zoom: 11, controls: []
+        function init() {
+            // Центр Москвы
+            myMap = new ymaps.Map('map', {
+                center: [55.753215, 37.622504],
+                zoom: 11,
+                controls: [] 
+            }, {
+                zoomControlSize: 'small',
+                zoomControlPosition: { right: 10, top: 200 } // Сдвигаем зум, если он нужен
             });
 
-            routePanelControl = new ymaps.control.RoutePanel({
-                options: { showHeader: true, maxWidth: '280px', visible: true }
+            // Настраиваем подсказки
+            var suggestView1 = new ymaps.SuggestView('suggest-from', { results: 3, offset: [0, 5] });
+            var suggestView2 = new ymaps.SuggestView('suggest-to', { results: 3, offset: [0, 5] });
+        }
+
+        function buildRoute() {
+            const from = document.getElementById('suggest-from').value;
+            const to = document.getElementById('suggest-to').value;
+
+            if(!from || !to) {
+                tg.HapticFeedback.notificationOccurred('error');
+                return; 
+            }
+
+            if (activeMultiRoute) {
+                myMap.geoObjects.remove(activeMultiRoute);
+            }
+
+            // Лоадер на кнопке (визуальный эффект)
+            let btn = document.querySelector('.btn-main');
+            let oldText = btn.innerText;
+            btn.innerText = "Ищем...";
+
+            activeMultiRoute = new ymaps.multiRouter.MultiRoute({
+                referencePoints: [from, to],
+                params: { routingMode: 'masstransit' }
+            }, {
+                routeStrokeColor: "#E31E24", 
+                routeActiveStrokeColor: "#E31E24",
+                routeStrokeWidth: 5,
+                boundsAutoApply: true 
+            });
+
+            myMap.geoObjects.add(activeMultiRoute);
+
+            activeMultiRoute.model.events.add('requestsuccess', function() {
+                btn.innerText = oldText;
+                const activeRoute = activeMultiRoute.getActiveRoute();
+                if (activeRoute) {
+                    const time = activeRoute.properties.get("duration").text;
+                    const dist = activeRoute.properties.get("distance").text;
+                    
+                    document.getElementById('res-time').innerText = time;
+                    document.getElementById('res-dist').innerText = dist;
+                    document.getElementById('result-panel').classList.add('active');
+                    
+                    routeData = { time: time, distance: dist };
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
             });
             
-            routePanelControl.routePanel.state.set({
-                type: 'masstransit', fromEnabled: true, toEnabled: true
+            activeMultiRoute.model.events.add('requestfail', function() {
+                btn.innerText = oldText;
+                alert("Не удалось построить маршрут");
             });
-
-            myMap.controls.add(routePanelControl, {float: 'top', right: 10});
-
-            // Слушаем построение маршрута для расчета эко-следа
-            routePanelControl.routePanel.getRouteAsync().then(function (route) {
-                route.model.events.add('requestsuccess', function () {
-                    const activeRoute = route.getActiveRoute();
-                    if(activeRoute) {
-                        const distanceMeters = activeRoute.properties.get("distance").value;
-                        const timeText = activeRoute.properties.get("duration").text;
-                        
-                        calculateEcoImpact(distanceMeters);
-                        
-                        // Сохраняем данные
-                        routeData = {
-                            time: timeText,
-                            dist: activeRoute.properties.get("distance").text,
-                            co2: document.getElementById('co2-val').innerText,
-                            cal: document.getElementById('cal-val').innerText
-                        };
-                        
-                        document.getElementById('stats').style.display = 'grid';
-                        document.getElementById('send-btn').style.display = 'block';
-                    }
-                });
-            });
-        });
-
-        // Формула расчета экологии (демонстрационная)
-        function calculateEcoImpact(meters) {
-            const km = meters / 1000;
-            // 1 км на авто ~ 150г CO2. На метро считаем ~ 0 (электроэнергия АЭС/ГЭС)
-            const savedCO2 = Math.round(km * 150); 
-            // Калории: ходьба и пересадки (примерно 20% от пути пешком)
-            const calories = Math.round(km * 0.2 * 50); 
-
-            document.getElementById('co2-val').innerText = `${savedCO2} g`;
-            document.getElementById('cal-val').innerText = `${calories} kcal`;
-        }
-
-        function search(query) {
-            const searchControl = new ymaps.control.SearchControl({
-                options: { provider: 'yandex#search', results: 5 }
-            });
-            myMap.controls.add(searchControl);
-            searchControl.search(query);
         }
 
         function findMe() {
-            ymaps.geolocation.get({ provider: 'browser', mapStateAutoApply: true })
-            .then(res => {
-                routePanelControl.routePanel.state.set({
-                    from: res.geoObjects.get(0).geometry.getCoordinates()
-                });
+            ymaps.geolocation.get({ provider: 'browser' }).then(function (res) {
+                const userAddress = res.geoObjects.get(0).properties.get('text');
+                document.getElementById('suggest-from').value = userAddress;
+                tg.HapticFeedback.impactOccurred('light');
             });
         }
 
-        function sendData() {
-            tg.sendData(JSON.stringify({...routeData, action: 'save_route'}));
+        function sendToBot() {
+            if(routeData.time) {
+                tg.sendData(JSON.stringify({...routeData, action: 'save_route'}));
+            }
         }
     </script>
 </body>
