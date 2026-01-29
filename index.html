@@ -3,141 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Smart Route Selection</title>
+    <title>Route Master</title>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- ПРОВЕРЬТЕ API КЛЮЧ -->
+    <!-- ВАЖНО: Вставьте свой ключ -->
     <script src="https://api-maps.yandex.ru/2.1/?apikey=8e8319a0-f355-4f5b-bef4-20745b37f5a1&lang=ru_RU&modules=services.Panel,suggest,multiRouter.MultiRoute,geolocation" type="text/javascript"></script>
     
     <style>
-        /* --- APPLE DESIGN SYSTEM --- */
         :root {
-            --bg-color: #ffffff;
-            --secondary-bg: #F2F2F7;
+            --bg: #ffffff;
+            --bg-sec: #F2F2F7;
             --blue: #007AFF;
-            --text-main: #000000;
-            --text-sec: #8E8E93;
-            --radius: 16px;
+            --text: #000;
+            --gray: #8E8E93;
         }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: -apple-system, sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background: #fff; }
 
-        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; }
+        #map { width: 100%; height: 100%; position: absolute; }
 
-        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
-
-        /* --- НИЖНЯЯ ПАНЕЛЬ --- */
+        /* --- ПАНЕЛЬ (SHEET) --- */
         .sheet {
             position: absolute; bottom: 0; left: 0; right: 0;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            background: rgba(255,255,255,0.98);
             border-radius: 20px 20px 0 0;
-            padding: 20px 16px;
-            padding-bottom: calc(20px + env(safe-area-inset-bottom));
-            box-shadow: 0 -5px 40px rgba(0,0,0,0.15);
+            box-shadow: 0 -5px 30px rgba(0,0,0,0.15);
+            padding: 16px;
+            padding-bottom: calc(16px + env(safe-area-inset-bottom));
+            display: flex; flex-direction: column; gap: 12px;
             z-index: 100;
-            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-            max-height: 80vh; /* Чтобы список не улетал в небо */
-            display: flex; flex-direction: column;
+            transition: transform 0.3s ease;
+            max-height: 80vh;
         }
 
-        /* Поля ввода */
-        .search-box {
-            display: flex; flex-direction: column; gap: 10px;
+        /* Поиск */
+        .search-container { display: flex; flex-direction: column; gap: 10px; }
+        .input-row {
+            background: var(--bg-sec); border-radius: 10px;
+            display: flex; align-items: center; padding: 0 12px; height: 46px;
+            position: relative;
         }
-        .input-wrap {
-            background: var(--secondary-bg);
-            border-radius: 12px;
-            padding: 0 12px;
-            height: 44px;
-            display: flex; align-items: center;
-        }
-        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 12px; }
-        .green { background: #34C759; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+        .green { background: #34C759; } 
         .red { background: #FF3B30; }
-        
-        input { border: none; background: transparent; width: 100%; font-size: 17px; outline: none; }
-        
-        .main-btn {
+        input { border: none; background: transparent; width: 100%; font-size: 16px; outline: none; height: 100%; }
+
+        /* Подсказки (Свой дизайн, но данные Яндекса) */
+        .suggestions {
+            position: absolute; bottom: 100%; left: 16px; right: 16px;
+            background: #fff; border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+            margin-bottom: 8px; display: none; overflow: hidden;
+            z-index: 200;
+        }
+        .suggestions.active { display: block; }
+        .suggest-item {
+            padding: 12px 16px; border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .suggest-item:active { background: #f5f5f5; }
+        .s-title { font-size: 16px; font-weight: 500; }
+        .s-desc { font-size: 12px; color: var(--gray); margin-top: 2px; }
+
+        /* Кнопка */
+        .btn {
             background: var(--blue); color: white; border: none;
             width: 100%; padding: 14px; border-radius: 12px;
-            font-size: 17px; font-weight: 600; margin-top: 16px;
-            cursor: pointer; transition: 0.2s;
-        }
-        .main-btn:active { transform: scale(0.98); }
-
-        /* --- СПИСОК МАРШРУТОВ (СКРЫТ ПО УМОЛЧАНИЮ) --- */
-        .routes-list {
-            display: none; /* Flex when active */
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 15px;
-            overflow-y: auto; /* Скролл если много вариантов */
-            max-height: 40vh;
+            font-size: 17px; font-weight: 600; cursor: pointer;
         }
 
-        /* Карточка одного маршрута */
-        .route-card {
-            background: var(--secondary-bg);
-            padding: 14px;
-            border-radius: 12px;
-            border: 2px solid transparent;
-            cursor: pointer;
-            display: flex; justify-content: space-between; align-items: center;
-            transition: 0.2s;
-        }
-
-        /* Активная карточка (выбранная) */
-        .route-card.selected {
-            background: #fff;
-            border-color: var(--blue);
-            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.15);
-        }
-
-        .route-info h3 { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main); }
-        .route-info p { margin: 4px 0 0 0; font-size: 14px; color: var(--text-sec); }
+        /* --- РЕЗУЛЬТАТЫ --- */
+        .routes-view { display: none; flex-direction: column; height: 100%; }
         
-        .route-tag {
-            background: rgba(142, 142, 147, 0.15);
-            padding: 4px 8px; border-radius: 6px;
-            font-size: 13px; color: var(--text-main); font-weight: 500;
+        /* Список карточек маршрутов (горизонтальный скролл или вертикальный) */
+        .routes-header-list {
+            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;
+            margin-bottom: 10px; border-bottom: 1px solid #eee;
         }
-        .route-card.selected .route-tag {
-            background: var(--blue); color: white;
+        .route-chip {
+            background: var(--bg-sec); padding: 8px 14px; border-radius: 20px;
+            white-space: nowrap; font-size: 14px; font-weight: 500;
+            border: 1px solid transparent; cursor: pointer;
+        }
+        .route-chip.active {
+            background: #fff; border-color: var(--blue); color: var(--blue);
+            box-shadow: 0 2px 8px rgba(0,122,255,0.2);
         }
 
-        /* Кнопка подтверждения выбранного */
-        #confirm-btn { display: none; background: #000; }
-
-        /* Хак для подсказок (чтобы были поверх панели) */
-        .ymaps-2-1-79-search__suggest { z-index: 99999 !important; border-radius: 12px !important; border:none !important; box-shadow: 0 10px 40px rgba(0,0,0,0.2) !important; top: -200px !important; }
+        /* Детализация шагов (Timeline) */
+        .steps-container {
+            flex: 1; overflow-y: auto; padding-right: 5px;
+            display: flex; flex-direction: column; gap: 15px;
+            margin-bottom: 15px;
+        }
+        .step { display: flex; gap: 12px; }
+        .step-icon {
+            width: 30px; display: flex; flex-direction: column; align-items: center;
+        }
+        .icon-box {
+            width: 24px; height: 24px; background: #eee; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 12px;
+        }
+        .line { width: 2px; flex: 1; background: #eee; margin-top: 5px; }
+        .step:last-child .line { display: none; }
+        
+        .step-info { flex: 1; }
+        .step-title { font-weight: 600; font-size: 15px; }
+        .step-desc { font-size: 13px; color: var(--gray); margin-top: 2px; }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
+    
+    <!-- Подсказки -->
+    <div class="suggestions" id="suggest-box"></div>
 
     <div class="sheet">
-        
-        <!-- Контейнер для списка маршрутов -->
-        <div class="routes-list" id="routes-container">
-            <!-- Сюда JS добавит карточки -->
-        </div>
-
-        <!-- Поля ввода -->
-        <div class="search-box" id="search-ui">
-            <div class="input-wrap">
+        <!-- БЛОК ПОИСКА -->
+        <div class="search-container" id="search-ui">
+            <div class="input-row">
                 <div class="dot green"></div>
-                <input type="text" id="suggest-from" placeholder="Откуда?">
+                <input type="text" id="inp-from" placeholder="Откуда?" oninput="inputHandler(this, 'suggest-box')" autocomplete="off">
             </div>
-            <div class="input-wrap">
+            <div class="input-row">
                 <div class="dot red"></div>
-                <input type="text" id="suggest-to" placeholder="Куда?">
+                <input type="text" id="inp-to" placeholder="Куда?" oninput="inputHandler(this, 'suggest-box')" autocomplete="off">
             </div>
-            <button class="main-btn" onclick="buildRoute()">Найти маршруты</button>
+            <button class="btn" onclick="buildRoute()">Найти маршрут</button>
         </div>
 
-        <!-- Кнопка "Поехали" для выбранного маршрута -->
-        <button class="main-btn" id="confirm-btn" onclick="sendData()">Поехали 🚀</button>
+        <!-- БЛОК РЕЗУЛЬТАТОВ -->
+        <div class="routes-view" id="results-ui">
+            <!-- Табы выбора маршрута -->
+            <div class="routes-header-list" id="routes-tabs"></div>
+            
+            <!-- Список шагов -->
+            <div class="steps-container" id="steps-list"></div>
+
+            <button class="btn" onclick="sendRouteToTelegram()">Отправить в чат ✈️</button>
+        </div>
     </div>
 
     <script>
@@ -145,122 +150,185 @@
         tg.expand();
 
         let myMap, multiRoute;
-        let foundRoutes = []; // Сюда сохраним найденные варианты
-        let selectedIndex = 0; // Какой выбран сейчас
+        let foundRoutes = [];
+        let selectedIndex = 0;
+        let currentSegmentsText = ""; // Текст для Телеграма
 
         ymaps.ready(init);
 
         function init() {
-            myMap = new ymaps.Map('map', {
-                center: [55.753215, 37.622504], zoom: 11, controls: []
-            });
-            // Саджесты
-            new ymaps.SuggestView('suggest-from', { results: 3, offset: [0, -10] });
-            new ymaps.SuggestView('suggest-to', { results: 3, offset: [0, -10] });
+            myMap = new ymaps.Map('map', { center: [55.753, 37.622], zoom: 11, controls: [] });
         }
 
+        // --- 1. УМНЫЕ ПОДСКАЗКИ (DATA FROM YANDEX) ---
+        function inputHandler(input, boxId) {
+            const val = input.value;
+            const box = document.getElementById(boxId);
+            
+            if(val.length < 3) { box.classList.remove('active'); return; }
+
+            // Используем API Яндекса для получения данных
+            ymaps.suggest(val).then(items => {
+                box.innerHTML = "";
+                if(!items.length) { box.classList.remove('active'); return; }
+                
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'suggest-item';
+                    // item.value - это полный адрес
+                    // item.displayName - это "Метро Ясенево"
+                    div.innerHTML = `<div class="s-title">${item.displayName}</div><div class="s-desc">${item.value}</div>`;
+                    
+                    div.onclick = () => {
+                        input.value = item.value; // Вставляем полный адрес
+                        box.classList.remove('active');
+                    };
+                    box.appendChild(div);
+                });
+                box.classList.add('active');
+            });
+        }
+
+        // --- 2. ПОСТРОЕНИЕ МАРШРУТА ---
         function buildRoute() {
-            const from = document.getElementById('suggest-from').value;
-            const to = document.getElementById('suggest-to').value;
-            if(!from || !to) return tg.HapticFeedback.notificationOccurred('error');
+            const from = document.getElementById('inp-from').value;
+            const to = document.getElementById('inp-to').value;
+            if(!from || !to) return;
 
             if(multiRoute) myMap.geoObjects.remove(multiRoute);
 
-            // Создаем мультимаршрут
             multiRoute = new ymaps.multiRouter.MultiRoute({
                 referencePoints: [from, to],
-                params: { routingMode: 'masstransit' } // Общественный транспорт
+                params: { routingMode: 'masstransit' }
             }, {
-                // Стили активного маршрута
-                routeActiveStrokeColor: "#007AFF", 
-                routeActiveStrokeWidth: 6,
-                // Стили остальных (неактивных) маршрутов - серые
+                routeActiveStrokeColor: "#007AFF",
                 routeStrokeColor: "#b0b0b0",
-                routeStrokeWidth: 4,
                 boundsAutoApply: true
             });
 
             myMap.geoObjects.add(multiRoute);
 
-            // Слушаем, когда маршруты найдутся
-            multiRoute.model.events.add('requestsuccess', function() {
-                // Получаем список всех найденных маршрутов
-                const routes = multiRoute.model.getRoutes();
-                foundRoutes = routes;
-
-                if (routes.length > 0) {
-                    // Скрываем поиск, показываем результаты
-                    document.getElementById('search-ui').style.display = 'none';
-                    document.getElementById('routes-container').style.display = 'flex';
-                    document.getElementById('confirm-btn').style.display = 'block';
-
-                    renderRoutesList(routes);
-                    tg.HapticFeedback.notificationOccurred('success');
+            multiRoute.model.events.add('requestsuccess', () => {
+                foundRoutes = multiRoute.model.getRoutes();
+                if(foundRoutes.length > 0) {
+                    showResultsUI();
                 }
             });
-            
-            multiRoute.model.events.add('requestfail', function() {
-                alert("Маршруты не найдены");
-            });
         }
 
-        // Функция отрисовки карточек
-        function renderRoutesList(routes) {
-            const container = document.getElementById('routes-container');
-            container.innerHTML = ""; // Очистить старое
+        // --- 3. ИНТЕРФЕЙС РЕЗУЛЬТАТОВ ---
+        function showResultsUI() {
+            document.getElementById('search-ui').style.display = 'none';
+            document.getElementById('results-ui').style.display = 'flex';
+            
+            renderTabs();
+            selectRoute(0); // Выбираем первый
+        }
 
-            routes.forEach((route, index) => {
-                // Данные маршрута
+        function renderTabs() {
+            const container = document.getElementById('routes-tabs');
+            container.innerHTML = "";
+            
+            foundRoutes.forEach((route, i) => {
                 const time = route.properties.get("duration").text;
-                const dist = route.properties.get("distance").text;
-                
-                // Создаем HTML карточку
-                const card = document.createElement('div');
-                card.className = `route-card ${index === 0 ? 'selected' : ''}`; // Первый выбран по умолчанию
-                card.onclick = () => selectRoute(index); // При клике выбираем этот маршрут
-                
-                card.innerHTML = `
-                    <div class="route-info">
-                        <h3>${time}</h3>
-                        <p>${dist} • Вариант ${index + 1}</p>
-                    </div>
-                    <div class="route-tag">${index === 0 ? 'Быстрый' : 'Альтерн.'}</div>
-                `;
-                
-                container.appendChild(card);
+                const chip = document.createElement('div');
+                chip.className = `route-chip ${i === 0 ? 'active' : ''}`;
+                chip.innerText = time;
+                chip.onclick = () => selectRoute(i);
+                container.appendChild(chip);
             });
-            
-            selectedIndex = 0; // Сбрасываем выбор на первый
         }
 
-        // Логика выбора варианта
         function selectRoute(index) {
-            // 1. Говорим карте подсветить этот маршрут
-            multiRoute.setActiveRoute(index);
             selectedIndex = index;
+            multiRoute.setActiveRoute(index);
+            
+            // Подсветка таба
+            const chips = document.querySelectorAll('.route-chip');
+            chips.forEach((c, i) => c.classList.toggle('active', i === index));
 
-            // 2. Обновляем стили карточек (белая рамка)
-            const cards = document.querySelectorAll('.route-card');
-            cards.forEach((card, i) => {
-                if (i === index) card.classList.add('selected');
-                else card.classList.remove('selected');
-            });
-
+            // Рендер шагов
+            renderSteps(foundRoutes[index]);
             tg.HapticFeedback.impactOccurred('light');
         }
 
-        function sendData() {
-            if (foundRoutes.length === 0) return;
+        // --- 4. САМОЕ ГЛАВНОЕ: РАЗБОР ШАГОВ (SEGMENTS) ---
+        function renderSteps(route) {
+            const container = document.getElementById('steps-list');
+            container.innerHTML = "";
             
-            // Берем данные выбранного маршрута
-            const route = foundRoutes[selectedIndex];
+            let telegramText = `🏁 <b>Маршрут: ${route.properties.get("duration").text}</b>\n\n`;
+            
+            // Получаем пути (обычно один путь)
+            const paths = route.getPaths();
+            paths.forEach(path => {
+                const segments = path.getSegments();
+                
+                segments.forEach(segment => {
+                    // Тип сегмента: walk, transport, transfer
+                    const type = segment.properties.get("type");
+                    const text = segment.properties.get("text"); // "Пройти 200 м" или "Автобус ..."
+                    let icon = "🚶";
+                    let title = "Пешком";
+                    let desc = text;
+
+                    if (type === "transport") {
+                        // Получаем детали транспорта
+                        const transports = segment.properties.get("transports");
+                        if (transports && transports.length > 0) {
+                             // Например "Автобус 55"
+                            const tName = transports[0].name; 
+                            const tType = transports[0].type; // bus, subway
+                            
+                            if(tType === 'subway' || tType === 'underground') {
+                                icon = "🚇";
+                                title = "Метро";
+                            } else {
+                                icon = "🚌";
+                                title = "Транспорт";
+                            }
+                            desc = `${title} ${tName}: ${text}`;
+                        }
+                    } else if (type === "transfer") {
+                        icon = "🔄";
+                        title = "Пересадка";
+                    }
+
+                    // Добавляем в HTML
+                    const stepHTML = `
+                        <div class="step">
+                            <div class="step-icon">
+                                <div class="icon-box">${icon}</div>
+                                <div class="line"></div>
+                            </div>
+                            <div class="step-info">
+                                <div class="step-title">${title}</div>
+                                <div class="step-desc">${desc}</div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += stepHTML;
+
+                    // Добавляем в текст для Телеграма
+                    telegramText += `${icon} ${desc}\n⬇️\n`;
+                });
+            });
+
+            telegramText += "🏁 <b>Прибытие</b>";
+            currentSegmentsText = telegramText;
+        }
+
+        function sendRouteToTelegram() {
             const data = {
-                time: route.properties.get("duration").text,
-                dist: route.properties.get("distance").text,
-                action: 'save_route'
+                text: currentSegmentsText,
+                action: 'save_details'
             };
-            
             tg.sendData(JSON.stringify(data));
+        }
+        
+        // Закрываем подсказки при клике на карту
+        document.getElementById('map').onclick = () => {
+            document.getElementById('suggest-box').classList.remove('active');
         }
     </script>
 </body>
