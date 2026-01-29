@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>МосМетро Помощник</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Подключаем API с модулями поиска и маршрутизации -->
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=8e8319a0-f355-4f5b-bef4-20745b37f5a1&lang=ru_RU" type="text/javascript"></script>
+    
+    <!-- Подключаем шрифт Roboto для современного вида -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --moscow-red: #E31E24; /* Цвет Московского транспорта */
+            --bg-color: #ffffff;
+            --text-color: #000000;
+        }
+
+        /* Темная тема (адаптация под настройки Телеграм) */
+        body.dark-mode {
+            --bg-color: #1c1c1e;
+            --text-color: #ffffff;
+        }
+
+        body, html { 
+            padding: 0; margin: 0; width: 100%; height: 100%; 
+            font-family: 'Roboto', sans-serif;
+            overflow: hidden;
+        }
+
+        #map { width: 100%; height: 100%; }
+
+        /* Плавающая панель управления */
+        .controls-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            right: 10px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none; /* Чтобы клики сквозь пустые места проходили на карту */
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+            overflow-x: auto;
+            padding-bottom: 5px;
+        }
+
+        /* Стиль кнопок */
+        .action-btn {
+            flex: 1;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border: none;
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+            white-space: nowrap;
+        }
+
+        .action-btn:active { transform: scale(0.96); }
+        
+        .btn-primary {
+            background-color: var(--moscow-red);
+            color: white;
+            font-weight: 700;
+        }
+
+        /* Лоадер */
+        #loader {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2000;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 10px;
+            display: block;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="loader">Загрузка карты Москвы...</div>
+    <div id="map"></div>
+
+    <div class="controls-panel">
+        <!-- Быстрый поиск социальных объектов -->
+        <div class="btn-row">
+            <button class="action-btn" onclick="searchNear('МФЦ')">🏢 МФЦ</button>
+            <button class="action-btn" onclick="searchNear('Поликлиника')">🏥 Поликлиники</button>
+            <button class="action-btn" onclick="searchNear('Аптека')">💊 Аптеки</button>
+        </div>
+        
+        <!-- Основные действия -->
+        <div class="btn-row">
+            <button class="action-btn" onclick="findMe()">📍 Где я?</button>
+            <button id="send-btn" class="action-btn btn-primary" style="display:none;" onclick="sendRoute()">✅ Отправить маршрут</button>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        let tg = window.Telegram.WebApp;
+        tg.expand(); 
+        
+        if (tg.colorScheme === 'dark') {
+            document.body.classList.add('dark-mode');
+        }
+
+        let myMap;
+        let routePanelControl;
+        let currentRouteLength = "";
+        let currentRouteTime = "";
+
+        ymaps.ready(init);
+
+        function init() {
+            document.getElementById('loader').style.display = 'none';
+
+            myMap = new ymaps.Map("map", {
+                center: [55.753215, 37.622504], // Центр Москвы
+                zoom: 11,
+                controls: ['zoomControl'] // Только зум, чтобы не захламлять
+            }, {
+                searchControlProvider: 'yandex#search'
+            });
+
+            routePanelControl = new ymaps.control.RoutePanel({
+                options: {
+                    showHeader: true,
+                    title: 'Маршрут',
+                    autofocus: false,
+                    maxWidth: '90%' // Адаптивность
+                }
+            });
+
+            routePanelControl.routePanel.state.set({
+                type: 'masstransit',
+                fromEnabled: true,
+                toEnabled: true
+            });
+
+            myMap.controls.add(routePanelControl, {float: 'top'});
+
+            routePanelControl.routePanel.getRouteAsync().then(function (route) {
+                route.model.events.add('requestsuccess', function () {
+                    var activeRoute = route.getActiveRoute();
+                    if (activeRoute) {
+                        currentRouteLength = activeRoute.properties.get("distance").text;
+                        currentRouteTime = activeRoute.properties.get("duration").text;
+                        
+                        document.getElementById('send-btn').style.display = 'flex';
+                        tg.HapticFeedback.notificationOccurred('success');
+                    }
+                });
+            });
+        }
+
+        function findMe() {
+            ymaps.geolocation.get({
+                provider: 'browser',
+                mapStateAutoApply: true
+            }).then(function (result) {
+                routePanelControl.routePanel.state.set({
+                    from: result.geoObjects.get(0).geometry.getCoordinates(),
+                    fromDisplayName: 'Мое местоположение'
+                });
+            });
+        }
+
+        function searchNear(query) {
+            let center = myMap.getCenter();
+            
+            let to = routePanelControl.routePanel.state.get('to');
+            if(to) {
+            }
+
+            var searchControl = new ymaps.control.SearchControl({
+                options: {
+                    provider: 'yandex#search',
+                    noPlacemark: false,
+                    results: 5 // Показываем топ-5
+                }
+            });
+            
+            myMap.controls.add(searchControl);
+            searchControl.search(query);
+            tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function sendRoute() {
+            if (!currentRouteTime) return;
+
+            // Формируем JSON объект
+            const data = JSON.stringify({
+                time: currentRouteTime,
+                distance: currentRouteLength,
+                action: "save_route"
+            });
+            
+            tg.sendData(data);
+        }
+    </script>
+</body>
+</html>
